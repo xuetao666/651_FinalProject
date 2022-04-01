@@ -168,7 +168,52 @@ kable(l3_tbl,booktab=T)
 
 
 ##Selection:
+selected_var_list=c()
+vlist=names(data)[1:14]
+excludelist=vlist
+ex_list_all=c()
+for(centeri in 1:19){
+  data_sub=as.data.frame(data[complete.cases(data),]) %>%
+    filter(center==centeri) %>%
+    dplyr::select(!center) %>%
+    dplyr::select(!num_patients)
+  ex_list=c()
+  elist=c()
+  vlist2=names(data_sub)
+  
+  out_exclude=F
+  #Get out variable only with one level:
+  for(evar in vlist2){
+    if(length(unique(data_sub[[evar]]))==1){
+      data_sub=data_sub[,!colnames(data_sub) %in% evar]
+      ex_list=c(ex_list,evar)
+    }
+    if(evar=="event" & length(unique(data_sub[[evar]]))<3){
+      out_exclude=T
+    }
+  }
+  
+  if(!out_exclude){
+    fit=multinom(as.factor(event) ~ ., data_sub)
+    ex_list=excludelist %in% ex_list
 
+    result=stepAIC(fit,direction="both")
+    selected_var=attr(result$terms , "term.labels")
+    
+    selected_var=vlist %in% selected_var
+    ex_list_all=rbind(ex_list_all,ex_list)
+  } else {
+    ex_list=excludelist %in% ex_list
+    selected_var=rep(FALSE,14)
+    
+  }
+  selected_var_list=rbind(selected_var_list,selected_var)
+  ex_list_all=rbind(ex_list_all,ex_list)
+  
+  
+}
+row.names(selected_var_list)=paste0("center",1:19)
+colnames(selected_var_list)=vlist
 
 
 
