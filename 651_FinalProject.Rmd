@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 rm(list=ls(all=TRUE))  #same to clear all in stata
 cat("\014")
 
-x<-c("dplyr","ggplot2","tidyr","xlsx","stringr","stringi","expss","gtsummary","tidyverse","knitr")
+x<-c("dplyr","ggplot2","tidyr","stringr","stringi","expss","gtsummary","tidyverse","knitr")
 
 new.packages<-x[!(x %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
@@ -27,376 +27,16 @@ coalesce <- function(...) {
 ```
 
 
-```{r,include=F}
-#Useful Functions:
-
-
-getHeader2<-function(data,by=NA){
-  
-  #Test use:
-  # by="datatype"
-  ##
-  
-  header<-c("N","",nrow(data))
-  header_name=c("Variable","Levels","Total")
-  if(!is.na(by)){
-    bylevel=unique(data[[by]])
-    for(byl in bylevel){
-      header=c(header,nrow(data[data[[by]]==byl,]))
-      header_name=c(header_name,byl)
-    }
-  }
-
-  ##bind row names
-  empty_row<-c("")
-  header<-rbind(empty_row,header)
-  
-  #Add colnames:
-  colnames(header)<-header_name
-  header<-data.frame(header)
-  return(header)
-}
-# getHeader2(data)
-# getHeader2(data,by="datatype")
-
-
-
-##categorical output:
-getcat2<-function(data,varname,showlevel=NA,na=FALSE,digits=2,by=NA){
-
-  # varname="DON_HIST_DIAB"
-  # showlevel=NA
-  # na=FALSE
-  # digits=2
-  # by=NA
-
-  #Get variable lable:
-  varlab<-var_lab(data[[varname]])
-  if(length(is.na(varlab))==0){
-    varlab<-varname
-  }
-  rowname<-c(varlab)
-  #Get column names:
-  colname<-c("Variable","Levels","Total")
-  
-  ##don't showlevel:
-  if(!is.na(showlevel)){
-    level<-unique(data[[varname]])[showlevel]
-  }else{
-    level<-unique(data[[varname]])
-  }
-  ## Don't show NAs:
-  if(na){
-    total<-nrow(data)
-    level<-c(level,NA)
-  }else{
-    data<-data[!is.na(data[[varname]]),]
-    total<-nrow(data)
-  }
-  row<-c(varlab,"",paste("n=",total,sep=""))
-  
-  if(!is.na(by)){
-    bylevel=unique(data[[by]])
-    for(byl in bylevel){
-      colname=c(colname,byl)
-      total=nrow(data[data[[by]]==byl,])
-      row<-c(row,paste("n=",total,sep=""))
-    }
-  } 
-  
-  if(!is.na(by)){
-    bylevel=unique(data[[by]])
-    total=nrow(data)
-    for(i in level){
-      #Total:
-      if(is.na(i)){
-        count<-nrow(data[is.na(data[[varname]]),])
-      }
-      else{
-        count<-nrow(data[as.character(data[[varname]])==i & !is.na(data[[varname]]),])
-      }
-      percent<-round(count/total*100,digits =digits)
-      rowtemp<-c("",i,paste(count,"(",percent,"%)",sep=""))
-      
-      #By group:
-      for(byl in bylevel){
-        ctotal=nrow(data[data[[by]]==byl ,])
-        if(is.na(i)){
-          count<-nrow(data[is.na(data[[varname]]) & data[[by]]==byl,])
-        }
-        else{
-          count<-nrow(data[as.character(data[[varname]])==i & !is.na(data[[varname]]) & data[[by]]==byl,])
-        }
-        percent<-round(count/ctotal*100,digits =digits)
-        
-        rowtemp<-c(rowtemp,paste(count,"(",percent,"%)",sep=""))
-      }
-      rowname<-c(rowname,"")
-      row=rbind(row,rowtemp)
-    }
-  } else {
-    for(i in level){
-      
-      if(is.na(i)){
-        count<-nrow(data[is.na(data[[varname]]),])
-      }
-      else{
-        count<-nrow(data[as.character(data[[varname]])==i & !is.na(data[[varname]]),])
-      }
-      percent<-round(count/total*100,digits =digits)
-      
-      rowtemp<-c("",i,paste(count,"(",percent,"%)",sep=""))
-      row<-rbind(row,rowtemp)
-      rowname<-c(rowname,"")
-    }
-  }
-
-  colnames(row)<-colname
-  row.names(row)<-rowname
-
-
-  return(row)
-
-}
-# getcat2(data,"female",by="datatype")
-# getcat2(data,"female")
-
-##continous output:
-getcont2<-function(data,varname,digits=2,OutType="both",by=NA){
-
-#   ##test area
-#   varname<-"FollowUp_time"
-#   na=FALSE
-#   digits=2
-#   OutType="both"
-#   by=NA
-#   ##
-
-  varlab<-var_lab(data[[varname]])
-  if(length(is.na(varlab))==0){
-    varlab<-varname
-  }
-  colname<-c("Variable","Levels","Total")
-
-  ##Numbers of non-missing values:
-  total<-nrow(data[!is.na(data[[varname]]),])
-  row<-c(varlab,"",paste("N=",total,sep=""))
-  
-  if(!is.na(by)){
-    bylevel=unique(data[[by]])
-    for(byl in bylevel){
-      colname=c(colname,byl)
-      total=nrow(data[data[[by]]==byl & !is.na(data[[varname]]),])
-      row<-c(row,paste("n=",total,sep=""))
-    }
-  } 
-
-  mean.out<-c("","Mean(sd)")
-  median.out<-c("","Median(IQR)")
-  
-  
-  if(!is.na(by)){
-    bylevel=c("Total",unique(data[[by]]))
-  } else {
-    bylevel="Total"
-  }
-
-  for(byl in bylevel){
-    if(byl=="Total"){
-      data_sub=data
-    } else {
-      data_sub=data[data[[by]]==byl,]
-    }
-    
-    di<-describe(data_sub[[varname]])
-    sum<-summary(data_sub[[varname]])
-    
-    ##get specific values
-    Mean<-di$mean
-    Median<-sum["Median"]
-    p25<-sum["1st Qu."]
-    p75<-sum["3rd Qu."]
-    n<-unlist(di[["counts"]])["n"]
-    
-    ##round
-    Mean<-round(as.numeric(Mean),digits=digits)
-    Median<-round(as.numeric(Median),digits=digits)
-    p25<-round(as.numeric(p25),digits=digits)
-    p75<-round(as.numeric(p75),digits=digits)
-    
-    IQR<-paste(p25,"-",p75,sep="")
-    sd<-round(sd(data_sub[[varname]],na.rm=TRUE),digits=digits)
-    
-    
-    mean.out.temp<-paste(Mean,"(",sd,")",sep="")
-    median.out.temp<-paste(Median,"(",IQR,")",sep="")
-    
-    mean.out<-c(mean.out,mean.out.temp)
-    median.out<-c(median.out,median.out.temp)
-    
-  }  
-  
-  if(OutType=="both"){
-    row<-rbind(row,mean.out,median.out)
-    rowname<-c(varlab,"","")
-  }else if(OutType=="Mean"){
-    row<-rbind(row,mean.out)
-    rowname<-c(varlab,"")
-  }else if(OutType=="Median"){
-    row<-rbind(row,median.out)
-    rowname<-c(varlab,"")
-  }
-    
-  colnames(row)<-colname
-  row.names(row)<-rowname
-  
-  return(row)
-
-}
-
-
-gettable1<-function(data,varlist,contdigits=2,catdigits=2,catna=FALSE,by=NA,out="table"){
-
-  #test use
-
-  # outtable="table1"
-  # contdigits=2
-  # catdigits=2
-  # catna=FALSE
-  # by="datatype"
-  # ##
-
-
-
-  if(out=="table"){
-      ##get header
-    if(is.na(by)){
-        outtab<-getHeader2(data)
-      } else {
-        outtab<-getHeader2(data,by=by)
-      }
-    
-    
-    for(varins in varlist){
-      var<-unlist(str_split(varins," "))[1]
-      type<-unlist(str_split(varins," "))[2]
-      
-      if(is.na(by)){
-        if(type=="cat"){
-          outtab<-rbind(outtab,getcat2(data=data,varname=var,showlevel=NA,na=catna,digits=catdigits))
-          print(paste("var=",var," type=",type))
-        }else if(type=="cmean"){
-          outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Mean"))
-          print(paste("var=",var," type=",type))
-        }else if(type=="cmedian"){
-          outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Median"))
-          print(paste("var=",var," type=",type))
-        }else if(type=="cboth"){
-          outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="both"))
-          print(paste("var=",var," type=",type))
-        }
-      } else {
-        if(type=="cat"){
-          outtab<-rbind(outtab,getcat2(data=data,varname=var,showlevel=NA,na=catna,digits=catdigits,by=by))
-          print(paste("var=",var," type=",type))
-        }else if(type=="cmean"){
-          outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Mean",by=by))
-          print(paste("var=",var," type=",type))
-        }else if(type=="cmedian"){
-          outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Median",by=by))
-          print(paste("var=",var," type=",type))
-        }else if(type=="cboth"){
-          outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="both",by=by))
-          print(paste("var=",var," type=",type))
-        }
-      }
-      
-    }
-  } else{
-    #   ##get header
-    # if(is.na(by)){
-    #     outtab<-getHeader2(data)
-    #   } else {
-    #     outtab<-getHeader2(data,by=by)
-    #   }
-    # 
-    # 
-    # for(varins in varlist){
-    #   var<-unlist(str_split(varins," "))[1]
-    #   type<-unlist(str_split(varins," "))[2]
-    #   
-    #   if(is.na(by)){
-    #     if(type=="cat"){
-    #       outtab<-rbind(outtab,getcat2(data=data,varname=var,showlevel=NA,na=catna,digits=catdigits))
-    #       print(paste("var=",var," type=",type))
-    #     }else if(type=="cmean"){
-    #       outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Mean"))
-    #       print(paste("var=",var," type=",type))
-    #     }else if(type=="cmedian"){
-    #       outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Median"))
-    #       print(paste("var=",var," type=",type))
-    #     }else if(type=="cboth"){
-    #       outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="both"))
-    #       print(paste("var=",var," type=",type))
-    #     }
-    #   } else {
-    #     if(type=="cat"){
-    #       outtab<-rbind(outtab,getcat2(data=data,varname=var,showlevel=NA,na=catna,digits=catdigits,by=by))
-    #       print(paste("var=",var," type=",type))
-    #     }else if(type=="cmean"){
-    #       outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Mean",by=by))
-    #       print(paste("var=",var," type=",type))
-    #     }else if(type=="cmedian"){
-    #       outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="Median",by=by))
-    #       print(paste("var=",var," type=",type))
-    #     }else if(type=="cboth"){
-    #       outtab<-rbind(outtab,getcont2(data=data,varname=var,digits=contdigits,OutType="both",by=by))
-    #       print(paste("var=",var," type=",type))
-    #     }
-    #   }
-    #   
-    # }
-  }
-  
-
-  return(outtab)
-}
-
-# getcont2(data,by ="datatype",varname = "FollowUp_time",digits=2,OutType="both")
-# getcont2(data,varname = "FollowUp_time",digits=2,OutType="both")
-
-```
-
-
-
 #The objective of this project is to examine risk factors associated with post-transplant mortality and graft failure.
 
 ```{r}
 #Read in Data:
 data=read.csv("pseudo_kidney_transplant_2005.csv")
 
-##Create Table 1:
-# 
-# 
-# ##combine and output:
-# catvarlist<-c("DON_HIST_DIAB","DON_GENDER","DON_RACE","DON_HTN","DON_ECD","REC_GENDER",
-#               "REC_RACE","REC_COLD_ISCH_TM_20","REC_DIAB","event","center")
-# countvarlist<-c("DON_BMI","DON_AGE","REC_BMI","REC_AGE_AT_TX",
-#                 "REC_DIAL_YRS")
-# 
-# varlist<-c()
-# for(cat in catvarlist){
-#   varlist<-c(varlist,paste(cat,"cat",sep=" "))
-# }
-# for(cont in countvarlist){
-#   varlist<-c(varlist,paste(cont,"cboth",sep=" "))
-# }
-# 
-# table1<-gettable1(data,varlist,contdigits=2,catdigits=2,catna=FALSE)
 
 #Donor Information:
 data %>% 
-  select(DON_HIST_DIAB,DON_GENDER,DON_BMI,DON_AGE,DON_RACE,DON_HTN,DON_ECD) %>% 
+  dplyr::select(DON_HIST_DIAB,DON_GENDER,DON_BMI,DON_AGE,DON_RACE,DON_HTN,DON_ECD) %>% 
   tbl_summary(missing = "no",
               type = all_continuous() ~ "continuous2",
               statistic = list(all_continuous() ~ c("{N_nonmiss}",
@@ -426,7 +66,113 @@ data %>%
 
 
 
+```{r}
 
+#Stepwise selection:
+library(nnet)
+# library(doParallel)
+library(caret)
+library(MASS)
+ 
+#Complete case analysis:
+data_complete=as.data.frame(data[complete.cases(data),]) %>%
+  dplyr::select(!center) %>%
+  dplyr::select(!num_patients)
+
+
+ 
+#Selection process
+fit=multinom(as.factor(event) ~ ., data_complete)
+result=stepAIC(fit,direction="both")
+
+##Show results: Adjusted
+l2_coef=round(summary(result)$coefficients[1,],3)
+l3_coef=round(summary(result)$coefficients[2,],3)
+
+l2_se=round(summary(result)$standard.errors[1,],3)
+l3_se=round(summary(result)$standard.errors[2,],3)
+
+l2_z=(summary(result)$coefficients/summary(result)$standard.errors)[1,]
+l3_z=(summary(result)$coefficients/summary(result)$standard.errors)[2,]
+l2_p=round((1 - pnorm(abs(l2_z), 0, 1)) * 2,3)
+l3_p=round((1 - pnorm(abs(l3_z), 0, 1)) * 2,3)
+
+l2_z=round(l2_z,3)
+l3_z=round(l3_z,3)
+
+l2_p=ifelse(l2_p==0,"<0.001",l2_p)
+l3_p=ifelse(l2_p==0,"<0.001",l2_p)
+
+l2_tbl=cbind(l2_coef,l2_se,l2_z,l2_p)
+l3_tbl=cbind(l3_coef,l3_se,l3_z,l3_p)
+
+colnames(l2_tbl)=c("Coefficients","Std. Err","z value","p value")
+colnames(l3_tbl)=c("Coefficients","Std. Err","z value","p value")
+
+kable(l2_tbl,booktab=T)
+kable(l3_tbl,booktab=T)
+
+```
+
+```{r}
+##Unadjusted
+selected_var=attr(result$terms , "term.labels")
+
+l2_coef=c()
+l3_coef=c()
+
+l2_se=c()
+l3_se=c()
+
+for(var in selected_var){
+  fit=multinom(as.formula(paste0("event~",var)),data=data_complete)
+  l2_coef=c(l2_coef,round(summary(fit)$coefficients[1,2],3))
+  l2_se=c(l2_se,round(summary(fit)$standard.errors[1,2],3))
+  l3_coef=c(l3_coef,round(summary(fit)$coefficients[2,2],3))
+  l3_se=c(l3_se,round(summary(fit)$standard.errors[2,2],3))
+  
+}
+
+
+l2_z=(l2_coef/l2_se)
+l3_z=(l3_coef/l3_se)
+l2_p=round((1 - pnorm(abs(l2_z), 0, 1)) * 2,3)
+l3_p=round((1 - pnorm(abs(l3_z), 0, 1)) * 2,3)
+
+l2_z=round(l2_z,3)
+l3_z=round(l3_z,3)
+
+l2_p=ifelse(l2_p==0,"<0.001",l2_p)
+l3_p=ifelse(l2_p==0,"<0.001",l2_p)
+
+
+l2_tbl=cbind(l2_coef,l2_se,l2_z,l2_p)
+l3_tbl=cbind(l3_coef,l3_se,l3_z,l3_p)
+
+colnames(l2_tbl)=c("Coefficients","Std. Err","z value","p value")
+colnames(l3_tbl)=c("Coefficients","Std. Err","z value","p value")
+rownames(l2_tbl)=selected_var
+rownames(l3_tbl)=selected_var
+
+kable(l2_tbl,booktab=T)
+
+kable(l3_tbl,booktab=T)
+
+```
+
+
+
+```{r}
+##Sensitivity analysis
+##By center:
+
+
+##Selection:
+
+
+
+
+```
 
 
 
