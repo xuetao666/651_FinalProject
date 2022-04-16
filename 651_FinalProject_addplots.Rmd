@@ -1,0 +1,271 @@
+---
+title: "651_FInalProject"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+rm(list=ls(all=TRUE))  #same to clear all in stata
+cat("\014")
+
+x<-c("dplyr","ggplot2","tidyr","stringr","stringi","expss","gtsummary","tidyverse","knitr")
+
+new.packages<-x[!(x %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+
+lapply(x, require, character.only=T)
+coalesce <- function(...) {
+  apply(cbind(...), 1, function(x) {
+    x[which(!is.na(x))[1]]
+  })
+}
+```
+
+
+#The objective of this project is to examine risk factors associated with post-transplant mortality and graft failure.
+
+```{r}
+#Read in Data:
+data=read.csv("~/Desktop/year1_second/651/final_project/pseudo_kidney_transplant_2005.csv")
+
+
+#Donor Information:
+data %>% 
+  dplyr::select(DON_HIST_DIAB,DON_GENDER,DON_BMI,DON_AGE,DON_RACE,DON_HTN,DON_ECD) %>% 
+  tbl_summary(missing = "no",
+              type = all_continuous() ~ "continuous2",
+              statistic = list(all_continuous() ~ c("{N_nonmiss}",
+                                                    "{mean} ({sd})",
+                                                    "{median} ({p25}, {p75})"),
+                               all_categorical() ~ "{n} ({p}%)"),
+              ) %>% add_n %>% bold_labels  %>%
+  modify_caption("Table 1a. Baseline Donor Related Information ") 
+
+
+data %>% 
+  select(REC_GENDER,REC_RACE,REC_BMI,REC_COLD_ISCH_TM_20,REC_AGE_AT_TX,REC_DIAB,REC_DIAL_YRS,event) %>%
+  tbl_summary(missing = "no",
+              type = all_continuous() ~ "continuous2",
+              statistic = list(all_continuous() ~ c("{N_nonmiss}",
+                                                    "{mean} ({sd})",
+                                                    "{median} ({p25}, {p75})"),
+                               all_categorical() ~ "{n} ({p}%)"),
+              ) %>% add_n %>% bold_labels  %>%
+  modify_caption("Table 1b. Baseline Recipiant related information") 
+
+
+
+```
+
+
+
+
+
+```{r}
+
+#Stepwise selection:
+library(nnet)
+# library(doParallel)
+library(caret)
+library(MASS)
+ 
+#Complete case analysis:
+data_complete=as.data.frame(data[complete.cases(data),]) %>%
+  dplyr::select(!center) %>%
+  dplyr::select(!num_patients)
+
+
+ 
+#Selection process
+fit=multinom(as.factor(event) ~ ., data_complete)
+result=stepAIC(fit,direction="both")
+
+##Show results: Adjusted
+l2_coef=round(summary(result)$coefficients[1,],3)
+l3_coef=round(summary(result)$coefficients[2,],3)
+
+l2_se=round(summary(result)$standard.errors[1,],3)
+l3_se=round(summary(result)$standard.errors[2,],3)
+
+l2_z=(summary(result)$coefficients/summary(result)$standard.errors)[1,]
+l3_z=(summary(result)$coefficients/summary(result)$standard.errors)[2,]
+l2_p=round((1 - pnorm(abs(l2_z), 0, 1)) * 2,3)
+l3_p=round((1 - pnorm(abs(l3_z), 0, 1)) * 2,3)
+
+l2_z=round(l2_z,3)
+l3_z=round(l3_z,3)
+
+l2_p=ifelse(l2_p==0,"<0.001",l2_p)
+l3_p=ifelse(l2_p==0,"<0.001",l2_p)
+
+l2_tbl=cbind(l2_coef,l2_se,l2_z,l2_p)
+l3_tbl=cbind(l3_coef,l3_se,l3_z,l3_p)
+
+colnames(l2_tbl)=c("Coefficients","Std. Err","z value","p value")
+colnames(l3_tbl)=c("Coefficients","Std. Err","z value","p value")
+
+kable(l2_tbl,booktab=T)
+kable(l3_tbl,booktab=T)
+
+```
+
+```{r}
+##Unadjusted
+selected_var=attr(result$terms , "term.labels")
+
+l2_coef=c()
+l3_coef=c()
+
+l2_se=c()
+l3_se=c()
+
+for(var in selected_var){
+  fit=multinom(as.formula(paste0("event~",var)),data=data_complete)
+  l2_coef=c(l2_coef,round(summary(fit)$coefficients[1,2],3))
+  l2_se=c(l2_se,round(summary(fit)$standard.errors[1,2],3))
+  l3_coef=c(l3_coef,round(summary(fit)$coefficients[2,2],3))
+  l3_se=c(l3_se,round(summary(fit)$standard.errors[2,2],3))
+  
+}
+
+
+l2_z=(l2_coef/l2_se)
+l3_z=(l3_coef/l3_se)
+l2_p=round((1 - pnorm(abs(l2_z), 0, 1)) * 2,3)
+l3_p=round((1 - pnorm(abs(l3_z), 0, 1)) * 2,3)
+
+l2_z=round(l2_z,3)
+l3_z=round(l3_z,3)
+
+l2_p=ifelse(l2_p==0,"<0.001",l2_p)
+l3_p=ifelse(l2_p==0,"<0.001",l2_p)
+
+
+l2_tbl=cbind(l2_coef,l2_se,l2_z,l2_p)
+l3_tbl=cbind(l3_coef,l3_se,l3_z,l3_p)
+
+colnames(l2_tbl)=c("Coefficients","Std. Err","z value","p value")
+colnames(l3_tbl)=c("Coefficients","Std. Err","z value","p value")
+rownames(l2_tbl)=selected_var
+rownames(l3_tbl)=selected_var
+
+kable(l2_tbl,booktab=T)
+
+kable(l3_tbl,booktab=T)
+
+```
+
+
+
+```{r}
+##Sensitivity analysis
+##By center:
+
+
+##Selection:
+selected_var_list=c()
+vlist=names(data)[1:14]
+excludelist=vlist
+ex_list_all=c()
+for(centeri in 1:19){
+  data_sub=as.data.frame(data[complete.cases(data),]) %>%
+    filter(center==centeri) %>%
+    dplyr::select(!center) %>%
+    dplyr::select(!num_patients)
+  ex_list=c()
+  elist=c()
+  vlist2=names(data_sub)
+  
+  out_exclude=F
+  #Get out variable only with one level:
+  for(evar in vlist2){
+    if(length(unique(data_sub[[evar]]))==1){
+      data_sub=data_sub[,!colnames(data_sub) %in% evar]
+      ex_list=c(ex_list,evar)
+    }
+    if(evar=="event" & length(unique(data_sub[[evar]]))<3){
+      out_exclude=T
+    }
+  }
+  
+  if(!out_exclude){
+    fit=multinom(as.factor(event) ~ ., data_sub)
+    ex_list=excludelist %in% ex_list
+
+    result=stepAIC(fit,direction="both")
+    selected_var=attr(result$terms , "term.labels")
+    
+    selected_var=vlist %in% selected_var
+    ex_list_all=rbind(ex_list_all,ex_list)
+  } else {
+    ex_list=excludelist %in% ex_list
+    selected_var=rep(FALSE,14)
+    
+  }
+  selected_var_list=rbind(selected_var_list,selected_var)
+  ex_list_all=rbind(ex_list_all,ex_list)
+  
+  
+}
+row.names(selected_var_list)=paste0("center",1:19)
+colnames(selected_var_list)=vlist
+
+
+
+```
+
+
+
+
+```{r}
+library(ggplot2)
+selected_var_listplot = data.frame(selected_var_list)
+centers <-
+  factor(
+    rownames(selected_var_list),
+    levels = c(
+      "center1",
+      "center2",
+      "center3",
+      "center4",
+      "center5",
+      "center6",
+      "center7",
+      "center8",
+      "center9",
+      "center10",
+      "center11",
+      "center12",
+      "center13",
+      "center14",
+      "center15",
+      "center16",
+      "center17",
+      "center18",
+      "center19"
+    )
+  )
+centers=data.frame(centers)
+selected_var_listplot <- cbind(centers, selected_var_list)
+selected_var_listplot %>% gather(variable, value,-centers) %>% filter(value ==
+                                                                        TRUE) %>%
+  ggplot(aes(centers, variable, col = variable)) + geom_point() + theme(legend.position =
+                                                                          "none") + theme(axis.text.x = element_text(
+                                                                            size = 10,
+                                                                            angle = 45,
+                                                                            vjust = 0.5
+                                                                          ))+ theme(axis.title.y=element_blank()) + theme(axis.title.x = element_blank())
+
+```
+
+
+
+
+
+
+
